@@ -25,6 +25,16 @@ import { IO } from "./io.js";
 const FDC_IRQ_CHANNEL = 6;
 const FDC_DMA_CHANNEL = 2;
 
+// Floppy drive types
+// CMOS register 0x10 bits: upper nibble: fda, lower nibble: fdb
+// https://wiki.osdev.org/CMOS#Register_0x10
+const CMOS_FDD_TYPE_NO_DRIVE = 0x0; // no floppy drive
+const CMOS_FDD_TYPE_360      = 0x1; // 360 KB 5.25 inch drive
+const CMOS_FDD_TYPE_1200     = 0x2; // 1.2 MB 5.25 inch drive
+const CMOS_FDD_TYPE_720      = 0x3; // 720 KB 3.5 inch drive
+const CMOS_FDD_TYPE_1440     = 0x4; // 1.44 MB 3.5 inch drive
+const CMOS_FDD_TYPE_2880     = 0x5; // 2.88 MB 3.5 inch drive
+
 // Floppy Controller PIO Register offsets (base: 0x3F0/0x370, offset 0x6 is reserved for ATA IDE)
 const REG_SRA       = 0x0;  // R,  SRA: Status Register A
 const REG_SRB       = 0x1;  // R,  SRB: Status Register B
@@ -111,10 +121,10 @@ const CMD_FORMAT_TRACK           = 0xd;
 const CMD_DUMP_REGS              = 0xe;
 const CMD_SEEK                   = 0xf;
 const CMD_VERSION                = 0x10;
-const CMD_PERPENDICULAR_MODE     = 0x12;    // new (Win2k)
+const CMD_PERPENDICULAR_MODE     = 0x12;    // new (Win2k3)
 const CMD_CONFIGURE              = 0x13;
 const CMD_LOCK                   = 0x14;
-const CMD_PART_ID                = 0x18;    // new (Win2k)
+const CMD_PART_ID                = 0x18;    // new (Win2k3)
 
 // FDC command flags
 const CMD_FLAG_MULTI_TRACK  = 0x1;     // MT: Multi-track selector (use both heads)
@@ -186,21 +196,41 @@ export function FloppyController(cpu, fda_image, fdb_image)
     this.response_length = 0;
     this.status0 = 0;
     this.status1 = 0;
-///    this.status2 = 0;    // TODO: unused (only used in state snapshots)
+///    this.status2 = 0;            // TODO: unused (only used in state snapshots)
 
-    this.sra = SRA_NDRV2;       // TODO: fdb
-    this.srb = 0xc0;            // TODO: bits
+    this.sra = 0;
+    this.srb = 0xc0;                // TODO: bits
     this.dor = DOR_NRESET | DOR_DMAEN;
     this.tdr = 0;
-    this.msr = MSR_RQM;         // TODO: trace usage in qemu
-    this.dsr = 0;               // TODO: trace usage in qemu
-///    this.fda_image = null;   // TODO: moved to FloppyDrive.disk_img
-///    this.fdb_image = null;   // TODO: moved to FloppyDrive.disk_img
+    this.msr = MSR_RQM;             // TODO: trace usage in qemu
+    this.dsr = 0;                   // TODO: trace usage in qemu
+///    this.fda_image = null;       // TODO: moved to FloppyDrive.disk_img
+///    this.fdb_image = null;       // TODO: moved to FloppyDrive.disk_img
 
     this.drives = [
         new FloppyDrive(this, 0, fda_image),
         new FloppyDrive(this, 1, fdb_image)
     ];
+
+    // To make a floppy drive visible to the guest OS we MUST define a drive
+    // type other than 0 (CMOS_FDD_TYPE_NO_DRIVE) in either nibble of CMOS
+    // register 0x10 before the guest is started (CMOS registers are usually
+    // read only once at startup), meaning we need to know the drive types in
+    // advance (unless we have a drive's image file here).
+    //
+    // TODO: Come up with some configuration scheme to allow empty drives,
+    // and maybe to control the drive type (currently forcing 1.4 and 2.8M
+    // in this case).
+    if(this.drives[0].drive_type === CMOS_FDD_TYPE_NO_DRIVE)
+    {
+        this.drives[0].drive_type = CMOS_FDD_TYPE_1440;
+    }
+    if(this.drives[1].drive_type === CMOS_FDD_TYPE_NO_DRIVE)
+    {
+        this.drives[1].drive_type = CMOS_FDD_TYPE_2880;
+    }
+    this.cpu.devices.rtc.cmos_write(CMOS_FLOPPY_DRIVE_TYPE, (this.drives[0].drive_type << 4) | this.drives[1].drive_type);
+
     this.curr_drive_no = 0;         // was: this.drive; qemu: fdctrl->cur_drv
     this.reset_sense_int_count = 0; // see SENSE INTERRUPT
     this.locked = false;            // see LOCK
@@ -218,17 +248,6 @@ export function FloppyController(cpu, fda_image, fdb_image)
 ///    this.last_sector = 1;           // TODO: moved and renamed to FloppyDrive.curr_sect
 
     Object.seal(this);
-
-    if(fda_image)
-    {
-        this.drives[0].insert_disk(fda_image);
-    }
-    else
-    {
-        this.drives[0].drive_type = CMOS_FDD_TYPE_1440;
-        this.drives[0].eject_disk();
-        this.cpu.devices.rtc.cmos_write(CMOS_FLOPPY_DRIVE_TYPE, CMOS_FDD_TYPE_1440 << 4);
-    }
 
     const fdc_io_base = 0x3F0;  // alt: 0x370
 
@@ -350,7 +369,7 @@ FloppyController.prototype.reset_fdc = function()
     dbg_log("resetting controller", LOG_FLOPPY);
     this.lower_irq("controller reset");
 
-    this.sra = SRA_NDRV2;       // TODO: fdb
+    this.sra = 0;
     this.srb = 0xc0;            // TODO: bits
     this.dor = DOR_NRESET | DOR_DMAEN;
     this.msr = MSR_RQM;
@@ -489,10 +508,6 @@ FloppyController.prototype.write_reg_dor = function(dor_byte)
     if(new_drive_no > 1)
     {
         dbg_log("*** WARNING: floppy drive number " + new_drive_no + " not implemented!", LOG_FLOPPY);
-    }
-    else if(new_drive_no === 1)  /// TODO: fdb
-    {
-        dbg_log("*** WARNING: floppy drive number " + new_drive_no + " not supported, only 0!", LOG_FLOPPY);
     }
     else
     {
@@ -648,8 +663,7 @@ FloppyController.prototype.exec_seek = function(args)
 FloppyController.prototype.exec_sense_interrupt_status = function(args)
 {
     // 0x08: SENSE INTERRUPT STATUS() -> (status0, curr_cyl)
-///    const curr_drive = this.drives[this.curr_drive_no];
-    const curr_drive = this.drives[0];  /// TODO: fdb, work-around for "make all-tests"
+    const curr_drive = this.drives[this.curr_drive_no];
 
     let status0;
     if(this.reset_sense_int_count > 0)
@@ -682,8 +696,7 @@ FloppyController.prototype.exec_recalibrate = function(args)
 {
     // 0x07: RECALIBRATE(drv_sel) -> () [+INTERRUPT]
     this.curr_drive_no = args[0] & DOR_SELMASK;
-///    const curr_drive = this.drives[this.curr_drive_no];
-    const curr_drive = this.drives[0];  /// TODO: fdb, work-around for "make all-tests"
+    const curr_drive = this.drives[this.curr_drive_no];
 
     curr_drive.seek(0, 0, 1, true);
     this.status0 |= SR0_SEEK;
@@ -794,7 +807,7 @@ FloppyController.prototype.exec_dump_regs = function(args)
     const curr_drive = this.drives[this.curr_drive_no];
     // drive positions
     this.response_data[0] = this.drives[0].curr_track;
-    this.response_data[1] = 0;  // TODO: fdb
+    this.response_data[1] = this.drives[1].curr_track;
     this.response_data[2] = 0;
     this.response_data[3] = 0;
     // timers
@@ -1064,16 +1077,6 @@ FloppyController.prototype.set_state = function(state)
 
 // class FloppyDrive ---------------------------------------------------------
 
-// Floppy drive types
-// CMOS register 0x10 bits: upper nibble: fdd0 (A:), lower nibble: fdd1 (B:)
-// https://wiki.osdev.org/CMOS#Register_0x10
-const CMOS_FDD_TYPE_NO_DRIVE = 0x0; // no floppy drive
-const CMOS_FDD_TYPE_360      = 0x1; // 360 KB 5.25 inch drive
-const CMOS_FDD_TYPE_1200     = 0x2; // 1.2 MB 5.25 inch drive
-const CMOS_FDD_TYPE_720      = 0x3; // 720 KB 3.5 inch drive
-const CMOS_FDD_TYPE_1440     = 0x4; // 1.44 MB 3.5 inch drive
-const CMOS_FDD_TYPE_2880     = 0x5; // 2.88 MB 3.5 inch drive
-
 // Floppy disk types
 const DISK_TYPES = {
     [160 * 1024]:  { drive_type: CMOS_FDD_TYPE_360,  tracks: 40, heads: 1, sectors: 8 },
@@ -1152,10 +1155,10 @@ FloppyDrive.prototype.insert_disk = function(disk_image)
     this.max_sect = floppy_type.sectors;
     this.media_changed = true;
 
+    // set drive type only once at startup
     if(this.drive_type === CMOS_FDD_TYPE_NO_DRIVE)
     {
         this.drive_type = floppy_type.drive_type;
-        this.cpu.devices.rtc.cmos_write(CMOS_FLOPPY_DRIVE_TYPE, this.drive_type << 4);
     }
 };
 
