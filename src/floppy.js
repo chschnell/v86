@@ -204,8 +204,8 @@ export function FloppyController(cpu, fda_image, fdb_image)
     this.tdr = 0;
     this.msr = MSR_RQM;             // TODO: trace usage in qemu
     this.dsr = 0;                   // TODO: trace usage in qemu
-///    this.fda_image = null;       // TODO: moved to FloppyDrive.disk_img
-///    this.fdb_image = null;       // TODO: moved to FloppyDrive.disk_img
+///    this.fda_image = null;       // TODO: moved to FloppyDrive.disk_image
+///    this.fdb_image = null;       // TODO: moved to FloppyDrive.disk_image
 
     this.drives = [
         new FloppyDrive(this, 0, fda_image),
@@ -756,7 +756,7 @@ FloppyController.prototype.exec_sense_drive_status = function(args)
     /// entire command is TODO!
     // 0x04: SENSE DRIVE STATUS(drv_hd_sel) -> (status3)
     const curr_drive = this.drives[this.curr_drive_no];
-    if(curr_drive.disk_img)
+    if(curr_drive.disk_image)
     {
         this.status1 = 0;
     }
@@ -920,12 +920,12 @@ FloppyController.prototype.start_read_write = function(args, do_write)
         this.msr &= ~MSR_RQM;
         if(do_write)
         {
-            this.dma.do_write(curr_drive.disk_img, data_offset, data_length, FDC_DMA_CHANNEL,
+            this.dma.do_write(curr_drive.disk_image, data_offset, data_length, FDC_DMA_CHANNEL,
                 this.end_read_write.bind(this, track, head, sect));
         }
         else
         {
-            this.dma.do_read(curr_drive.disk_img, data_offset, data_length, FDC_DMA_CHANNEL,
+            this.dma.do_read(curr_drive.disk_image, data_offset, data_length, FDC_DMA_CHANNEL,
                 this.end_read_write.bind(this, track, head, sect));
         }
     }
@@ -1100,7 +1100,7 @@ const DISK_TYPES = {
  *
  * @param {FloppyController} fdc
  */
-function FloppyDrive(fdc, fdd_nr, disk_img)
+function FloppyDrive(fdc, fdd_nr, disk_image)
 {
     this.fdc = fdc;
     this.cpu = fdc.cpu;
@@ -1112,7 +1112,7 @@ function FloppyDrive(fdc, fdd_nr, disk_img)
     this.perpendicular = 0; // TODO
 
     // disk state
-    this.disk_img = null;
+    this.disk_image = null;
     this.max_track = 0;     // was: FloppyController.number_of_cylinders (qemu: max_track)
     this.max_head = 0;      // was: FloppyController.number_of_heads
     this.max_sect = 0;      // was: FloppyController.sectors_per_track (qemu: last_sect)
@@ -1123,6 +1123,8 @@ function FloppyDrive(fdc, fdd_nr, disk_img)
     this.media_changed = true;
 
     Object.seal(this);
+
+    this.insert_disk(disk_image);
     dbg_log(this.name + ": floppy drive ready", LOG_FLOPPY);
 }
 
@@ -1149,7 +1151,7 @@ FloppyDrive.prototype.insert_disk = function(disk_image)
         dbg_log("Warning: Unkown floppy size: " + disk_image.byteLength + ", assuming " + floppy_size);
     }
 
-    this.disk_img = disk_image;
+    this.disk_image = disk_image;
     this.max_track = floppy_type.tracks;
     this.max_head = floppy_type.heads;
     this.max_sect = floppy_type.sectors;
@@ -1164,7 +1166,7 @@ FloppyDrive.prototype.insert_disk = function(disk_image)
 
 FloppyDrive.prototype.eject_disk = function()
 {
-    this.disk_img = null;
+    this.disk_image = null;
     this.max_track = 0;
     this.max_head = 0;
     this.max_sect = 0;
@@ -1213,7 +1215,7 @@ FloppyDrive.prototype.seek = function(head, track, sect, enable_seek)
         this.curr_head = head;
         if(this.curr_track !== track)
         {
-            if(this.disk_img)
+            if(this.disk_image)
             {
                 this.media_changed = false;
             }
@@ -1223,7 +1225,7 @@ FloppyDrive.prototype.seek = function(head, track, sect, enable_seek)
         this.curr_sect = sect;
     }
 
-    if(!this.disk_img)
+    if(!this.disk_image)
     {
         ret = 2;
     }
