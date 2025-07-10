@@ -36,26 +36,26 @@ const CMOS_FDD_TYPE_1440     = 0x4; // 1.44 MB 3.5 inch drive
 const CMOS_FDD_TYPE_2880     = 0x5; // 2.88 MB 3.5 inch drive
 
 // Floppy Controller PIO Register offsets (base: 0x3F0/0x370, offset 0x6 is reserved for ATA IDE)
-const REG_SRA       = 0x0;  // R,  SRA: Status Register A
-const REG_SRB       = 0x1;  // R,  SRB: Status Register B
-const REG_DOR       = 0x2;  // RW, DOR: Digital Output Register
-const REG_TDR       = 0x3;  // RW, TDR: Tape Drive Register
-const REG_MSR       = 0x4;  // R,  MSR: Main Status Register
-const REG_DSR       = 0x4;  // W,  DSR: Datarate Select Register
-const REG_FIFO      = 0x5;  // RW, FIFO: W: command bytes, R: response bytes
-const REG_DIR       = 0x7;  // R,  DIR: Digital Input Register
-const REG_CCR       = 0x7;  // W,  CCR: Configuration Control Register
+const REG_SRA       = 0x0;  // R,  Status Register A (SRA)
+const REG_SRB       = 0x1;  // R,  Status Register B (SRB)
+const REG_DOR       = 0x2;  // RW, Digital Output Register (DOR)
+const REG_TDR       = 0x3;  // RW, Tape Drive Register (TDR)
+const REG_MSR       = 0x4;  // R,  Main Status Register (MSR)
+const REG_DSR       = 0x4;  // W,  Datarate Select Register (DSR)
+const REG_FIFO      = 0x5;  // RW, W: command bytes, R: response bytes (FIFO)
+const REG_DIR       = 0x7;  // R,  Digital Input Register (DIR)
+const REG_CCR       = 0x7;  // W,  Configuration Control Register (CCR)
 
-// SRA (Status Register A) bits
+// Status Register A (SRA) bits
 const SRA_NDRV2     = 0x40; // true: second drive is not connected
 const SRA_INTPEND   = 0x80; // true: interrupt pending
 
-// SRB (Status Register B) bits
+// Status Register B (SRB) bits
 const SRB_MTR0      = 0x1;  // follows DOR.DOR_MOT0
 const SRB_MTR1      = 0x2;  // follows DOR.DOR_MOT1
 const SRB_DR0       = 0x20; // follows DOR.DOR_SEL_LO (TODO: what's this really?)
 
-// DOR (Digital Output Register) bits
+// Digital Output Register (DOR) bits
 const DOR_SEL_LO    = 0x1;  // lower bit of selected FDD number
 const DOR_SEL_HI    = 0x2;  // upper bit of selected FDD number
 const DOR_NRESET    = 0x4;  // true: normal controller mode, false: reset mode ("not RESET")
@@ -66,10 +66,10 @@ const DOR_MOTEN2    = 0x40; // true: enable motor of FDD2
 const DOR_MOTEN3    = 0x80; // true: enable motor of FDD3
 const DOR_SELMASK   = 0x01;
 
-// TDR (Taoe Drive Register) bits
+// Tape Drive Register (TDR) bits
 const TDR_BOOTSEL   = 0x4;
 
-// MSR (Main Status Register) bits
+// Main Status Register (MSR) bits
 const MSR_FDD0      = 0x1;  // true: FDD0 is busy in seek mode
 const MSR_FDD1      = 0x2;  // true: FDD1 is busy in seek mode
 const MSR_FDD2      = 0x4;  // true: FDD2 is busy in seek mode
@@ -79,15 +79,15 @@ const MSR_NDMA      = 0x20; // Non-DMA mode, set in Execution phase of PIO mode 
 const MSR_DIO       = 0x40; // Data Input/Output, true: FDC has data for CPU, false: FDC expects data from CPU
 const MSR_RQM       = 0x80; // true: DATA register is ready for I/O
 
-// DSR (Datarate Select Register) bits
+// Datarate Select Register (DSR) bits
 const DSR_DRATEMASK = 0x3;
 const DSR_PWRDOWN   = 0x40;
 const DSR_SWRESET   = 0x80;
 
-// DIR (Digital Input Register) bits
+// Digital Input Register (DIR) bits
 const DIR_DOOR      = 0x80; // true: No disk or disk changed since last command
 
-// SR0 (Status Register 0) bits
+// Status Register 0 (SR0) bits
 const SR0_DS0       = 0x1;  // Drive select 0..3 lower bit
 const SR0_DS1       = 0x2;  // Drive select 0..3 upper bit
 const SR0_HEAD      = 0x4;  // true: Use 2nd head
@@ -97,13 +97,13 @@ const SR0_ABNTERM   = 0x40; // true: Command failed
 const SR0_INVCMD    = 0x80; // true: Unknown/unimplemented command code
 const SR0_RDYCHG    = SR0_ABNTERM | SR0_INVCMD; // 0xC0 (?)
 
-// SR1 (Status Register 1) bits
+// Status Register 1 (SR1) bits
 const SR1_MA        = 0x1;  // true: Missing address mark error
 const SR1_NW        = 0x2;  // true: Not writable error
 const SR1_NDAT      = 0x4;  // true: no DATA (TODO: not used in qemu!)
 const SR1_EC        = 0x80; // true: End of cylinder error
 
-// SR2 (Status Register 2) bits
+// Status Register 2 (SR2) bits
 const SR2_SNS       = 0x4;  // true: Scan not satisfied (?)
 const SR2_SEH       = 0x8;  // true: Scan equal hit (?)
 
@@ -149,19 +149,6 @@ const RESET_SENSE_INT_MAX = 4;
 const SECTOR_SIZE       = 512;  // fixed size of 512 bytes/sector
 const SECTOR_SIZE_CODE  = 2;    // sector size code 2: 512 bytes/sector
 
-/**
- * @param {number} head
- * @param {number} track
- * @param {number} sect
- * @param {number} last_sect
- * @param {number} num_sides
- */
-function chs2lba(track, head, sect, last_sect, num_sides)
-{
-    // map structured C/H/S address to linear block address (LBA)
-    return (track * num_sides + head) * last_sect + sect - 1;
-}
-
 // class FloppyController ----------------------------------------------------
 
 /**
@@ -183,53 +170,25 @@ export function FloppyController(cpu, fda_image, fdb_image)
     /** @const */
     this.cmd_table = this.build_cmd_lookup_table();
 
-    this.cmd_phase = CMD_PHASE_COMMAND;
-    this.cmd_code = 0;
-    this.cmd_flags = 0;
-    this.cmd_buffer = new Uint8Array(10);
-    this.cmd_cursor = 0;
-    this.cmd_remaining = 0;
-///    this.next_command = null;    // TODO: deprecated
-
-    this.response_data = new Uint8Array(10);
-    this.response_cursor = 0;
-    this.response_length = 0;
-    this.status0 = 0;
-    this.status1 = 0;
-///    this.status2 = 0;            // TODO: unused (only used in state snapshots)
-
     this.sra = 0;
     this.srb = 0xc0;                // TODO: bits
     this.dor = DOR_NRESET | DOR_DMAEN;
     this.tdr = 0;
     this.msr = MSR_RQM;             // TODO: trace usage in qemu
     this.dsr = 0;                   // TODO: trace usage in qemu
-///    this.fda_image = null;       // TODO: moved to FloppyDrive.disk_image
-///    this.fdb_image = null;       // TODO: moved to FloppyDrive.disk_image
 
-    this.drives = [
-        new FloppyDrive(this, 0, fda_image),
-        new FloppyDrive(this, 1, fdb_image)
-    ];
+    this.cmd_phase = CMD_PHASE_COMMAND;
+    this.cmd_code = 0;
+    this.cmd_flags = 0;
+    this.cmd_buffer = new Uint8Array(10);
+    this.cmd_cursor = 0;
+    this.cmd_remaining = 0;
 
-    // To make a floppy drive visible to the guest OS we MUST define a drive
-    // type other than 0 (CMOS_FDD_TYPE_NO_DRIVE) in either nibble of CMOS
-    // register 0x10 before the guest is started (CMOS registers are usually
-    // read only once at startup), meaning we need to know the drive types in
-    // advance (unless we have a drive's image file here).
-    //
-    // TODO: Come up with some configuration scheme to allow empty drives,
-    // and maybe to control the drive type (currently forcing 1.4 and 2.8M
-    // in this case).
-    if(this.drives[0].drive_type === CMOS_FDD_TYPE_NO_DRIVE)
-    {
-        this.drives[0].drive_type = CMOS_FDD_TYPE_1440;
-    }
-    if(this.drives[1].drive_type === CMOS_FDD_TYPE_NO_DRIVE)
-    {
-        this.drives[1].drive_type = CMOS_FDD_TYPE_2880;
-    }
-    this.cpu.devices.rtc.cmos_write(CMOS_FLOPPY_DRIVE_TYPE, (this.drives[0].drive_type << 4) | this.drives[1].drive_type);
+    this.response_data = new Uint8Array(10);
+    this.response_cursor = 0;
+    this.response_length = 0;
+    this.status0 = 0;
+    this.status1 = 0;
 
     this.curr_drive_no = 0;         // was: this.drive; qemu: fdctrl->cur_drv
     this.reset_sense_int_count = 0; // see SENSE INTERRUPT
@@ -240,12 +199,27 @@ export function FloppyController(cpu, fda_image, fdb_image)
     this.precomp_trk = 0;           // see CONFIGURE
     this.eot = 0;                   // see READ/WRITE
 
-///    this.number_of_cylinders = 0;   // TODO: moved and renamed to FloppyDrive.max_track
-///    this.number_of_heads = 0;       // TODO: moved and renamed to FloppyDrive.max_head
-///    this.sectors_per_track = 0;     // TODO: moved and renamed to FloppyDrive.max_sect
-///    this.last_cylinder = 0;         // TODO: moved and renamed to FloppyDrive.curr_track
-///    this.last_head = 0;             // TODO: moved and renamed to FloppyDrive.curr_head
-///    this.last_sector = 1;           // TODO: moved and renamed to FloppyDrive.curr_sect
+    // To make a floppy drive visible to the guest OS we MUST define a drive
+    // type other than 0 (CMOS_FDD_TYPE_NO_DRIVE) in either nibble of CMOS
+    // register 0x10 before the guest is started (CMOS registers are usually
+    // read only once at startup), meaning we need to know the drive types in
+    // advance (unless an image file is defined here in the constructor).
+    //
+    // TODO: Come up with some configuration scheme to allow empty and
+    // missing drives, and maybe to control the drive type (currently hard-
+    // coded to 1.4 and 2.8M).
+    this.drives = [
+        new FloppyDrive(this, 0, fda_image, CMOS_FDD_TYPE_1440),
+        new FloppyDrive(this, 1, fdb_image, CMOS_FDD_TYPE_2880)
+    ];
+
+    this.cpu.devices.rtc.cmos_write(CMOS_FLOPPY_DRIVE_TYPE, (this.drives[0].drive_type << 4) | this.drives[1].drive_type);
+
+    // convenience members for public use:
+    /** @const */
+    this.fda = this.drives[0];
+    /** @const */
+    this.fdb = this.drives[1];
 
     Object.seal(this);
 
@@ -294,18 +268,18 @@ FloppyController.prototype.build_cmd_lookup_table = function()
     const cmd_table = new Array(256);
     for(let i = CMD_DESCRIPTOR.length-1; i >= 0; i--)
     {
-        const cmd = CMD_DESCRIPTOR[i];
-        if(cmd.mask === 0xff)
+        const cmd_desc = CMD_DESCRIPTOR[i];
+        if(cmd_desc.mask === 0xff)
         {
-            cmd_table[cmd.code] = cmd;
+            cmd_table[cmd_desc.code] = cmd_desc;
         }
         else
         {
             for(let j = 0; j < 256; j++)
             {
-                if((j & cmd.mask) === cmd.code)
+                if((j & cmd_desc.mask) === cmd_desc.code)
                 {
-                    cmd_table[j] = cmd;
+                    cmd_table[j] = cmd_desc;
                 }
             }
         }
@@ -315,13 +289,13 @@ FloppyController.prototype.build_cmd_lookup_table = function()
 
 FloppyController.prototype.eject_fda = function()
 {
-    // TODO: deprecated API, use this.drives[0/1].eject_disk() instead
+    // deprecated, use this.fda.eject_disk() instead
     this.drives[0].eject_disk();
 };
 
 FloppyController.prototype.set_fda = function(fda_image)
 {
-    // TODO: deprecated API, use this.drives[0/1].insert_disk(disk_image) instead
+    // deprecated, use this.fda.insert_disk(img_buffer) instead
     this.drives[0].insert_disk(fda_image);
 };
 
@@ -455,7 +429,7 @@ FloppyController.prototype.read_reg_dir = function()
 
 FloppyController.prototype.write_reg_dor = function(dor_byte)
 {
-    // Motors
+    // motors
     if(dor_byte & DOR_MOTEN0)
     {
         this.srb |= SRB_MTR0;
@@ -473,7 +447,7 @@ FloppyController.prototype.write_reg_dor = function(dor_byte)
         this.srb &= ~SRB_MTR1;
     }
 
-    // Drive
+    // drive
     if(dor_byte & DOR_SEL_LO)
     {
         this.srb |= SRB_DR0;
@@ -483,12 +457,12 @@ FloppyController.prototype.write_reg_dor = function(dor_byte)
         this.srb &= ~SRB_DR0;
     }
 
-    // Reset state transitions
+    // reset state transitions
     if(this.dor & DOR_NRESET)
     {
         if(!(dor_byte & DOR_NRESET))
         {
-            dbg_log("fdc: enter RESET state");
+            dbg_log("fdc: enter RESET state", LOG_FLOPPY);
         }
     }
     else
@@ -497,7 +471,7 @@ FloppyController.prototype.write_reg_dor = function(dor_byte)
         {
             this.reset_fdc();
             this.dsr &= ~DSR_PWRDOWN;   // side effect: leaving EXIT state clears powerdown mode
-            dbg_log("fdc: exit RESET state");
+            dbg_log("fdc: exit RESET state", LOG_FLOPPY);
         }
     }
 
@@ -572,12 +546,12 @@ FloppyController.prototype.write_reg_fifo = function(fifo_byte)
     }
     else
     {
-        const cmd = this.cmd_table[fifo_byte];
+        const cmd_desc = this.cmd_table[fifo_byte];
         this.cmd_code = fifo_byte;
-        this.cmd_remaining = cmd.argc;
+        this.cmd_remaining = cmd_desc.argc;
         this.cmd_cursor = 0;
         this.cmd_flags = 0;
-        if((cmd.code === CMD_READ || cmd.code === CMD_WRITE) && (fifo_byte & 0x80)) // 0x80: Multi-track (MT)
+        if((cmd_desc.code === CMD_READ || cmd_desc.code === CMD_WRITE) && (fifo_byte & 0x80)) // 0x80: Multi-track (MT)
         {
             this.cmd_flags = CMD_FLAG_MULTI_TRACK;
         }
@@ -591,15 +565,15 @@ FloppyController.prototype.write_reg_fifo = function(fifo_byte)
     if(this.cmd_remaining === 0)
     {
         this.cmd_phase = CMD_PHASE_EXECUTION;
-        const cmd = this.cmd_table[this.cmd_code];
+        const cmd_desc = this.cmd_table[this.cmd_code];
         const args = this.cmd_buffer.slice(0, this.cmd_cursor);
         if(DEBUG)
         {
             const args_hex = [];
             args.forEach(arg => args_hex.push(h(arg, 2)));
-            dbg_log("FD command " + h(this.cmd_code) + ": " + cmd.name + "(" + args_hex.join(", ") + ")", LOG_FLOPPY);
+            dbg_log("FD command " + h(this.cmd_code) + ": " + cmd_desc.name + "(" + args_hex.join(", ") + ")", LOG_FLOPPY);
         }
-        cmd.handler.call(this, args);
+        cmd_desc.handler.call(this, args);
     }
 };
 
@@ -729,7 +703,7 @@ FloppyController.prototype.exec_read_id = function(args)
         curr_drive.curr_sect = (curr_drive.curr_sect % curr_drive.max_sect) + 1;
     }
     // raise interrupt
-    this.end_sector_io(0, 0, 0);
+    this.end_read_write(0, 0, 0);
 };
 
 FloppyController.prototype.exec_specify = function(args)
@@ -756,7 +730,7 @@ FloppyController.prototype.exec_sense_drive_status = function(args)
     /// entire command is TODO!
     // 0x04: SENSE DRIVE STATUS(drv_hd_sel) -> (status3)
     const curr_drive = this.drives[this.curr_drive_no];
-    if(curr_drive.disk_image)
+    if(curr_drive.img_buffer)
     {
         this.status1 = 0;
     }
@@ -848,26 +822,26 @@ FloppyController.prototype.start_read_write = function(args, do_write)
     const track = args[1];
     const head = args[2];
     const sect = args[3];
-    const ssc = args[4];    // sector size code (usually 2: 512 bytes/sect)
+    const ssc = args[4];    // sector size code 0..7 (0:128, 1:256, 2:512, ..., 7:16384 bytes/sect)
     const eot = args[5];    // last sector number of current track
-    const dtl = args[7];    // data length in bytes if ssc is 0 - TODO
+    const dtl = args[7];    // data length in bytes if ssc is 0
 
     switch(curr_drive.seek(head, track, sect, this.fdc_config & CONFIG_EIS))
     {
     case 2: // error: sect too big
-        this.end_sector_io(SR0_ABNTERM, 0x00, 0x00);
+        this.end_read_write(SR0_ABNTERM, 0x00, 0x00);
         this.response_data[3] = track;
         this.response_data[4] = head;
         this.response_data[5] = sect;
         return;
     case 3: // error: track too big
-        this.end_sector_io(SR0_ABNTERM, SR1_EC, 0x00);
+        this.end_read_write(SR0_ABNTERM, SR1_EC, 0x00);
         this.response_data[3] = track;
         this.response_data[4] = head;
         this.response_data[5] = sect;
         return;
     case 4: // error: no seek enabled
-        this.end_sector_io(SR0_ABNTERM, 0x00, 0x00);
+        this.end_read_write(SR0_ABNTERM, 0x00, 0x00);
         this.response_data[3] = track;
         this.response_data[4] = head;
         this.response_data[5] = sect;
@@ -877,20 +851,28 @@ FloppyController.prototype.start_read_write = function(args, do_write)
         break;
     }
 
-    const sector_size = 128 << (ssc > 7 ? 7 : ssc);
-    const data_offset = chs2lba(track, head, sect, curr_drive.max_sect, curr_drive.max_head) * sector_size;
+    const cmd_desc = this.cmd_table[this.cmd_code];
+    const sector_size = 128 << (ssc > 7 ? 7 : ssc);     // min. sector size (ssc=0): 128 bytes, max. (ssc=7): 16384 bytes
+    const data_offset = curr_drive.chs2lba(track, head, sect) * sector_size;
     let data_length;
-    if(ssc === 0)
+    if(sector_size === 128)
     {
+        // if requested data length dtl is < 128:
+        // - READ: return only dtl bytes, skipping the sector's remaining bytes
+        // - WRITE: we must fill the sector's remaining bytes with 0, TODO!
+        if(cmd_desc.code === CMD_WRITE && dtl !== 128)
+        {
+            dbg_assert(false, "TODO: dtl=" + dtl + " is not 128, zero-padding is still unimplemented!");
+        }
         data_length = dtl;
     }
     else
     {
-        let tmp = eot - sect + 1;
-        if(tmp < 0)
+        let sect_end = eot - sect + 1;
+        if(sect_end < 0 || ((this.cmd_flags & CMD_FLAG_MULTI_TRACK) && (sect_end + eot <= 0)))
         {
-            dbg_log("invalid EOT: " + tmp, LOG_FLOPPY);
-            this.end_sector_io(SR0_ABNTERM, SR1_MA, 0x00);
+            dbg_log("invalid EOT: eot=" + eot + " sect=" + sect + " sect_end=" + sect_end, LOG_FLOPPY);
+            this.end_read_write(SR0_ABNTERM, SR1_MA, 0x00);
             this.response_data[3] = track;
             this.response_data[4] = head;
             this.response_data[5] = sect;
@@ -898,16 +880,15 @@ FloppyController.prototype.start_read_write = function(args, do_write)
         }
         if(this.cmd_flags & CMD_FLAG_MULTI_TRACK)
         {
-            tmp += eot;
+            sect_end += eot;
         }
-        const data_end = sector_size * tmp;
-        data_length = (data_end > data_offset) ? data_end - data_offset : data_end;   // TODO
+        data_length = sect_end * sector_size - data_offset;
     }
     this.eot = eot;
 
     if(DEBUG)
     {
-        dbg_log("Floppy " + (do_write ? "Write" : "Read") +
+        dbg_log("Floppy " + cmd_desc.name +
             " from: " + h(data_offset) + ", length: " + h(data_length) +
             ", C/H/S: " + track + "/" + head + "/" + sect +
             ", #S: " + curr_drive.max_sect + ", #H: " + curr_drive.max_head,
@@ -918,39 +899,35 @@ FloppyController.prototype.start_read_write = function(args, do_write)
     {
         // start DMA transfer
         this.msr &= ~MSR_RQM;
-        if(do_write)
-        {
-            this.dma.do_write(curr_drive.disk_image, data_offset, data_length, FDC_DMA_CHANNEL,
-                this.end_read_write.bind(this, track, head, sect));
-        }
-        else
-        {
-            this.dma.do_read(curr_drive.disk_image, data_offset, data_length, FDC_DMA_CHANNEL,
-                this.end_read_write.bind(this, track, head, sect));
-        }
+        const do_dma = do_write ? this.dma.do_write : this.dma.do_read;
+        do_dma.call(this.dma,
+            curr_drive.img_buffer,
+            data_offset,
+            data_length,
+            FDC_DMA_CHANNEL,
+            // this.post_read_write.bind(this, track, head, sect)
+            dma_error => {
+                if(dma_error)
+                {
+                    dbg_log("DMA floppy error", LOG_FLOPPY);    // TODO: can we provide more details in the error message here?
+                    this.end_read_write(SR0_ABNTERM, 0, 0);     // TODO: how to abort properly here?
+                }
+                else
+                {
+                    this.seek_to_next_sect();
+                    this.end_read_write(0, 0, 0);
+                }
+            }
+        );
     }
     else
     {
         // start PIO transfer
-        dbg_assert(false, "READ/WRITE in PIO mode not supported!");
+        dbg_assert(false, cmd_desc.name + " in PIO mode not supported!");
     }
 };
 
-FloppyController.prototype.end_read_write = function(track, head, sect, error)
-{
-    if(error)
-    {
-        dbg_log("DMA floppy error", LOG_FLOPPY);
-        this.end_sector_io(SR0_ABNTERM, 0, 0);      // TODO: how to abort properly here?
-    }
-    else
-    {
-        this.seek_to_next_sect();
-        this.end_sector_io(0, 0, 0);
-    }
-};
-
-FloppyController.prototype.end_sector_io = function(status0, status1, status2)
+FloppyController.prototype.end_read_write = function(status0, status1, status2)
 {
     const curr_drive = this.drives[this.curr_drive_no];
 
@@ -1028,56 +1005,33 @@ FloppyController.prototype.seek_to_next_sect = function()
 FloppyController.prototype.get_state = function()
 {
     var state = [];
-
-    state[0] = this.cmd_remaining;
-    state[1] = this.cmd_buffer;
-    state[2] = this.cmd_cursor;
-    //state[3] = this.next_command;
-    state[4] = this.response_data;
-    state[5] = this.response_cursor;
-    state[6] = this.response_length;
-
-    state[8] = this.status0;
-    state[9] = this.status1;
-///    state[10] = this.status2;
-    state[11] = this.curr_drive_no;
-///    state[12] = this.last_cylinder;
-///    state[13] = this.last_head;
-///    state[14] = this.last_sector;
-    state[15] = this.dor;
-///    state[16] = this.sectors_per_track;
-///    state[17] = this.number_of_heads;
-///    state[18] = this.number_of_cylinders;
-
+    state[19] = this.cmd_phase;
+    state[20] = this.cmd_code;
+    state[21] = this.cmd_flags;
+    // ...      TODO!
     return state;
 };
 
 FloppyController.prototype.set_state = function(state)
 {
-    this.cmd_remaining = state[0];
-    this.cmd_buffer = state[1];
-    this.cmd_cursor = state[2];
-///    this.next_command = state[3];
-    this.response_data = state[4];
-    this.response_cursor = state[5];
-    this.response_length = state[6];
+    if(typeof state[19] === "undefined")
+    {
+        // NOTE: Old-style state snapshots did not include the disk image
+        // buffer, only a few register states, so a drive is either empty
+        // or has the same disk image buffer as before applying a state
+        // snapshot. The snapshotted registers can be safely ignored.
+        return;
+    }
 
-    this.status0 = state[8];
-    this.status1 = state[9];
-///    this.status2 = state[10];
-    this.curr_drive_no = state[11];
-///    this.last_cylinder = state[12];
-///    this.last_head = state[13];
-///    this.last_sector = state[14];
-    this.dor = state[15];
-///    this.sectors_per_track = state[16];
-///    this.number_of_heads = state[17];
-///    this.number_of_cylinders = state[18];
+    this.cmd_phase = state[19];
+    this.cmd_code = state[20];
+    this.cmd_flags = state[21];
+    // ...      TODO!
 };
 
 // class FloppyDrive ---------------------------------------------------------
 
-// Floppy disk types
+// Floppy disk types (TODO: separate by drive type, include more types from qemu)
 const DISK_TYPES = {
     [160 * 1024]:  { drive_type: CMOS_FDD_TYPE_360,  tracks: 40, heads: 1, sectors: 8 },
     [180 * 1024]:  { drive_type: CMOS_FDD_TYPE_360,  tracks: 40, heads: 1, sectors: 9 },
@@ -1099,78 +1053,100 @@ const DISK_TYPES = {
  * @constructor
  *
  * @param {FloppyController} fdc
+ * @param {number} fdd_nr
+ * @param {number} fallback_drive_type
  */
-function FloppyDrive(fdc, fdd_nr, disk_image)
+function FloppyDrive(fdc, fdd_nr, img_buffer, fallback_drive_type)
 {
+    /** @const */
     this.fdc = fdc;
+    /** @const */
     this.cpu = fdc.cpu;
+    /** @const */
     this.fdd_nr = fdd_nr;
+    /** @const */
     this.name = "fd" + fdd_nr;
 
     // drive state
     this.drive_type = CMOS_FDD_TYPE_NO_DRIVE;
-    this.perpendicular = 0; // TODO
 
     // disk state
-    this.disk_image = null;
     this.max_track = 0;     // was: FloppyController.number_of_cylinders (qemu: max_track)
     this.max_head = 0;      // was: FloppyController.number_of_heads
     this.max_sect = 0;      // was: FloppyController.sectors_per_track (qemu: last_sect)
     this.curr_track = 0;    // was: FloppyController.last_cylinder (qemu: track)
     this.curr_head = 0;     // was: FloppyController.last_head (qemu: head)
     this.curr_sect = 1;     // was: FloppyController.last_sector (qemu: sect)
+    this.perpendicular = 0; // TODO
     this.ro = true;         // TODO
     this.media_changed = true;
+    this.img_buffer = null;
 
     Object.seal(this);
 
-    this.insert_disk(disk_image);
+    this.insert_disk(img_buffer);
+    if(this.drive_type === CMOS_FDD_TYPE_NO_DRIVE)
+    {
+        this.drive_type = fallback_drive_type;
+    }
+
     dbg_log(this.name + ": floppy drive ready", LOG_FLOPPY);
 }
 
-FloppyDrive.prototype.insert_disk = function(disk_image)
+FloppyDrive.prototype.insert_disk = function(img_buffer)
 {
-    if(!disk_image)
+    if(!img_buffer)
     {
         return;
     }
-    let floppy_size = disk_image.byteLength;
-    let floppy_type = DISK_TYPES[floppy_size];
 
+    let floppy_size = img_buffer.byteLength;
+    let floppy_type = DISK_TYPES[floppy_size];
     if(!floppy_type)
     {
-        floppy_size = disk_image.byteLength > 1440 * 1024 ? 2880 * 1024 : 1440 * 1024;
+        floppy_size = img_buffer.byteLength > 1440 * 1024 ? 2880 * 1024 : 1440 * 1024;
         floppy_type = DISK_TYPES[floppy_size];
 
         // Note: this may prevent the "Get floppy image" functionality from working -- TODO: why?
-        dbg_assert(disk_image.buffer && disk_image.buffer instanceof ArrayBuffer);
+        dbg_assert(img_buffer.buffer && img_buffer.buffer instanceof ArrayBuffer);
         const new_image = new Uint8Array(floppy_size);
-        new_image.set(new Uint8Array(disk_image.buffer));
-        disk_image = new SyncBuffer(new_image.buffer);
+        new_image.set(new Uint8Array(img_buffer.buffer));
+        img_buffer = new SyncBuffer(new_image.buffer);
 
-        dbg_log("Warning: Unkown floppy size: " + disk_image.byteLength + ", assuming " + floppy_size);
+        dbg_log("Warning: Unkown floppy size: " + img_buffer.byteLength + ", assuming " + floppy_size, LOG_FLOPPY);
     }
 
-    this.disk_image = disk_image;
     this.max_track = floppy_type.tracks;
     this.max_head = floppy_type.heads;
     this.max_sect = floppy_type.sectors;
     this.media_changed = true;
+    this.img_buffer = img_buffer;
 
-    // set drive type only once at startup
     if(this.drive_type === CMOS_FDD_TYPE_NO_DRIVE)
     {
+        // drive type is only set once during construction
         this.drive_type = floppy_type.drive_type;
     }
 };
 
 FloppyDrive.prototype.eject_disk = function()
 {
-    this.disk_image = null;
-    this.max_track = 0;
+    this.max_track = 0; // TODO: check again, shouldn't this be curr_track/head/sect?
     this.max_head = 0;
     this.max_sect = 0;
     this.media_changed = true;
+    this.img_buffer = null;
+};
+
+/**
+ * @param {number} track
+ * @param {number} head
+ * @param {number} sect
+ */
+FloppyDrive.prototype.chs2lba = function(track, head, sect)
+{
+    // map structured C/H/S address to linear block address (LBA)
+    return (track * this.max_head + head) * this.max_sect + sect - 1;
 };
 
 /**
@@ -1200,8 +1176,8 @@ FloppyDrive.prototype.seek = function(head, track, sect, enable_seek)
     }
 
     let ret = 0;
-    const curr_sector = chs2lba(this.curr_track, this.curr_head, this.curr_sect, this.max_sect, this.max_head);
-    const new_sector = chs2lba(track, head, sect, this.max_sect, this.max_head);
+    const curr_sector = this.chs2lba(this.curr_track, this.curr_head, this.curr_sect);
+    const new_sector = this.chs2lba(track, head, sect);
 
     if(curr_sector !== new_sector)
     {
@@ -1212,23 +1188,63 @@ FloppyDrive.prototype.seek = function(head, track, sect, enable_seek)
             return 4;
         }
         */
-        this.curr_head = head;
         if(this.curr_track !== track)
         {
-            if(this.disk_image)
+            if(this.img_buffer)
             {
                 this.media_changed = false;
             }
             ret = 1;
         }
+        this.curr_head = head;
         this.curr_track = track;
         this.curr_sect = sect;
     }
 
-    if(!this.disk_image)
+    if(!this.img_buffer)
     {
         ret = 2;
     }
 
     return ret;
+};
+
+FloppyDrive.prototype.get_state = function()
+{
+    var state = [];
+    state[0]  = this.drive_type;
+    state[1]  = this.max_track;
+    state[2]  = this.max_head;
+    state[3]  = this.max_sect;
+    state[4]  = this.curr_track;
+    state[5]  = this.curr_head;
+    state[6]  = this.curr_sect;
+    state[7]  = this.perpendicular;
+    state[8]  = this.ro;
+    state[9]  = this.media_changed;
+    state[10] = this.img_buffer;
+    return state;
+};
+
+FloppyDrive.prototype.set_state = function(state)
+{
+    this.drive_type = state[0];
+    this.max_track = state[1];
+    this.max_head = state[2];
+    this.max_sect = state[3];
+    this.curr_track = state[4];
+    this.curr_head = state[5];
+    this.curr_sect = state[6];
+    this.perpendicular = state[7];
+    this.ro = state[8];
+    this.media_changed = state[9];
+    if(this.img_buffer)
+    {
+        dbg_assert(this.img_buffer.buffer instanceof ArrayBuffer);
+        this.img_buffer.set_state(state[10]);           // TODO: is this correct?
+    }
+    else
+    {
+        this.img_buffer = new SyncBuffer(state[10]);    // TODO: is this correct?
+    }
 };
