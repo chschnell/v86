@@ -210,7 +210,7 @@ const ATAPI_CMD =
     [ATAPI_CMD_READ_CD]:                       {name: "READ CD",                       flags: ATAPI_CF_NEEDS_DISK},
     [ATAPI_CMD_READ_DISK_INFORMATION]:         {name: "READ DISK INFORMATION",         flags: ATAPI_CF_NEEDS_DISK},
     [ATAPI_CMD_READ_SUBCHANNEL]:               {name: "READ SUBCHANNEL",               flags: ATAPI_CF_NEEDS_DISK},
-    [ATAPI_CMD_READ_TOC_PMA_ATIP]:             {name: "READ TOC PMA ATIP",             flags: ATAPI_CF_NEEDS_DISK},
+    [ATAPI_CMD_READ_TOC_PMA_ATIP]:             {name: "READ TOC/PMA/ATIP",             flags: ATAPI_CF_NEEDS_DISK},
     [ATAPI_CMD_READ_TRACK_INFORMATION]:        {name: "READ TRACK INFORMATION",        flags: ATAPI_CF_NEEDS_DISK},
     [ATAPI_CMD_REQUEST_SENSE]:                 {name: "REQUEST SENSE",                 flags: ATAPI_CF_NONE},
     [ATAPI_CMD_START_STOP_UNIT]:               {name: "START STOP UNIT",               flags: ATAPI_CF_NONE},
@@ -1468,44 +1468,66 @@ IDEInterface.prototype.atapi_handle = function()
             break;
 
         case ATAPI_CMD_READ_TOC_PMA_ATIP:
+            // see [MMC-3] 5.23 "READ TOC/PMA/ATIP Command" (p. 212)
+            var lba2track = (lba, msf_fmt) => {
+                if(msf_fmt)
+                {
+                    const ttl_frames = lba + 150;           // 150 = 2*75: 2-sec lead-in (1 sec := 75 frames)
+                    const minute = (ttl_frames / 4500) | 0; // 4500 = 60*75
+                    const second = ((ttl_frames / 75) | 0) % 60;
+                    const frame = ttl_frames % 75;
+                    return [0, minute, second, frame];
+                }
+                else
+                {
+                    return [(lba >> 24) & 0xFF, (lba >> 16) & 0xFF, (lba >> 8) & 0xFF, lba & 0xFF];
+                }
+            };
             var length = this.data[8] | this.data[7] << 8;
             var format = this.data[9] >> 6;
-            dbg_log_extra = `${h(format, 2)} length=${length} ${!!(this.data[1] & 2)} ${h(this.data[6])}`;
+            var msf_format = this.data[1] & 2;
+            dbg_log_extra = `length=${length} format=${h(format, 2)} msf=${!!msf_format} track=${h(this.data[6])}`;
 
             this.data_allocate(length);
             this.data_end = this.data_length;
             if(format === 0)
             {
-                const sector_count = this.sector_count;
+                // see [MMC-3] 5.23.2.4 (p. 216)
+                // see [MMC-3] Table 221 and Table 222 (p. 207/208) for ADR and CONTROL
+                //   ADR = 0001: Q Sub-channel encodes current position data (?)
+                //   CONTROL = 01x0: Data track, recorded uninterrupted
+                const tr_start = lba2track(0, msf_format);
+                const tr_end = lba2track(this.sector_count, msf_format);
                 this.data.set(new Uint8Array([
-                    0, 18, // length
-                    1, 1, // first and last session
+                    0, 18,  // length
+                    1, 1,   // first and last track
 
-                    0,
-                    0x14,
-                    1, // track number
-                    0,
-                    0, 0, 0, 0,
+                    0,      // reserved
+                    0x14,   // ADR | CONTROL: 0001 0100
+                    1,      // track number
+                    0,      // reserved
+                    tr_start[0], tr_start[1], tr_start[2], tr_start[3],
 
-                    0,
-                    0x16,
-                    0xAA, // track number
-                    0,
-                    sector_count >> 24,
-                    sector_count >> 16 & 0xFF,
-                    sector_count >> 8 & 0xFF,
-                    sector_count & 0xFF,
+                    0,      // reserved
+                    0x16,   // ADR | CONTROL: 0001 0110
+                    0xAA,   // track number 0xAA: lead-out area's track number
+                    0,      // reserved
+                    tr_end[0], tr_end[1], tr_end[2], tr_end[3],
                 ]));
             }
             else if(format === 1)
             {
+                // see [MMC-3] 5.23.3.2 (p. 219)
+                const tr_addr = lba2track(0, msf_format);   // first track address in last session
                 this.data.set(new Uint8Array([
-                    0, 10, // length
-                    1, 1, // first and last session
-                    0, 0,
-                    0, 0,
-                    0, 0,
-                    0, 0,
+                    0, 10,  // length
+                    1, 1,   // first and last session
+
+                    0,      // reserved
+                    0x14,   // ADR | CONTROL
+                    1,      // track number: first track number in last session
+                    0,      // reserved
+                    tr_addr[0], tr_addr[1], tr_addr[2], tr_addr[3],
                 ]));
             }
             else
