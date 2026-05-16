@@ -1517,17 +1517,16 @@ IDEInterface.prototype.atapi_handle = function()
             }
             else if(format === 1)
             {
-                // see [MMC-3] 5.23.3.2 (p. 219)
-                const tr_addr = lba2track(0, msf_format);   // first track address in last session
+                // multi session: only a single session defined
                 this.data.set(new Uint8Array([
                     0, 10,  // length
                     1, 1,   // first and last session
 
                     0,      // reserved
-                    0x14,   // ADR | CONTROL
-                    1,      // track number: first track number in last session
+                    0,      // ADR | CONTROL
+                    0,      // track number: first track number in last session
                     0,      // reserved
-                    tr_addr[0], tr_addr[1], tr_addr[2], tr_addr[3],
+                    0, 0, 0, 0,
                 ]));
             }
             else
