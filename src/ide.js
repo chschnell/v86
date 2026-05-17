@@ -237,6 +237,7 @@ const ATAPI_SK_ABORTED_COMMAND = 11;
 // https://github.com/qemu/qemu/blob/3c5a5e213e5f08fbfe70728237f7799ac70f5b99/hw/ide/ide-internal.h#L288
 const ATAPI_ASC_INV_FIELD_IN_CMD_PACKET = 0x24;
 const ATAPI_ASC_MEDIUM_MAY_HAVE_CHANGED = 0x28;
+const ATAPI_ASC_SAVING_PARAMETERS_NOT_SUPPORTED = 0x39;
 const ATAPI_ASC_MEDIUM_NOT_PRESENT = 0x3A;
 
 // Debug log detail bits (internal to this module)
@@ -248,7 +249,8 @@ const LOG_DETAIL_RW_DMA = 0x08; // log DMA data read/write-related events
 const LOG_DETAIL_CHS = 0x10;    // log register-CHS to LBA conversions
 const LOG_DETAIL_ALL = 0xFF;    // log all details
 // the bitset of active log details (should be 0 when not in DEBUG mode)
-const LOG_DETAILS = DEBUG ? LOG_DETAIL_NONE : 0;
+//const LOG_DETAILS = DEBUG ? LOG_DETAIL_NONE : 0;
+const LOG_DETAILS = DEBUG ? LOG_DETAIL_RW|LOG_DETAIL_RW_DMA|LOG_DETAIL_CHS : 0;
 
 /**
  * @constructor
@@ -1488,14 +1490,14 @@ IDEInterface.prototype.atapi_handle = function()
             var msf_format = this.data[1] & 2;
             dbg_log_extra = `length=${length} format=${h(format, 2)} msf=${!!msf_format} track=${h(this.data[6])}`;
 
-            this.data_allocate(length);
-            this.data_end = this.data_length;
             if(format === 0)
             {
                 // see [MMC-3] 5.23.2.4 (p. 216)
                 // see [MMC-3] Table 221 and Table 222 (p. 207/208) for ADR and CONTROL
                 //   ADR = 0001: Q Sub-channel encodes current position data (?)
                 //   CONTROL = 01x0: Data track, recorded uninterrupted
+                this.data_allocate(Math.min(20, length));
+                this.data_end = this.data_length;
                 const tr_start = lba2track(0, msf_format);
                 const tr_end = lba2track(this.sector_count, msf_format);
                 this.data.set(new Uint8Array([
@@ -1518,6 +1520,8 @@ IDEInterface.prototype.atapi_handle = function()
             else if(format === 1)
             {
                 // multi session: only a single session defined
+                this.data_allocate(Math.min(12, length));
+                this.data_end = this.data_length;
                 this.data.set(new Uint8Array([
                     0, 10,  // length
                     1, 1,   // first and last session
@@ -1564,14 +1568,56 @@ IDEInterface.prototype.atapi_handle = function()
 
         case ATAPI_CMD_MODE_SENSE_10:
             var length = this.data[8] | this.data[7] << 8;
-            var page_code = this.data[2];
-            dbg_log_extra = "page_code=" + h(page_code) + " length=" + length;
-            if(page_code === 0x2A)
+            var page_ctrl = this.data[2] >> 6;
+            var page_code = this.data[2] & 0x3F;
+            dbg_log_extra = `length=${length} page_code=${h(page_code, 2)} page_ctrl=${h(page_ctrl, 2)}`;
+            if(page_ctrl === 0)
             {
-                this.data_allocate(Math.min(30, length));
+                if(page_code === 0x01)
+                {
+                    this.data_allocate(Math.min(16, length));
+                    this.data_end = this.data_length;
+                    this.data.set(new Uint8Array([
+                        0x00, 0x0E, // Mode Data Length = 14 Bytes folgen
+
+                        0x00,       // Medium Type (kein Medium-Spezialtyp)
+                        0x80,       // Device Specific Parameter, bit7=1 => Read-Only CD-ROM
+
+                        0x00,       // Long LBA = aus
+                        0x00,       // Reserved
+                        0x00, 0x00, // Block Descriptor Length = 0
+
+                        0x01,       // Page Code = 0x01 (Error Recovery Page)
+                        0x06,       // Page Length = 6
+
+                        0x00,       // AWRE/ARRE/TB/RC = alles aus (kein Recovery-Verhalten)
+                        0x00,       // Read Retry Count
+                        0x00,       // Correction Span
+                        0x00,       // Head Offset Count
+                        0x00,       // Data Strobe Offset
+                        0x00,       // Reserved
+                    ]));
+                    this.status_reg = ATA_SR_DRDY|ATA_SR_DSC|ATA_SR_DRQ;
+                }
+                else if(page_code === 0x2A)
+                {
+                    this.data_allocate(Math.min(30, length));
+                    this.data_end = this.data_length;
+                    this.status_reg = ATA_SR_DRDY|ATA_SR_DSC|ATA_SR_DRQ;
+                }
+                else
+                {
+                    this.atapi_check_condition_response(ATAPI_SK_ILLEGAL_REQUEST, ATAPI_ASC_INV_FIELD_IN_CMD_PACKET);
+                }
             }
-            this.data_end = this.data_length;
-            this.status_reg = ATA_SR_DRDY|ATA_SR_DSC|ATA_SR_DRQ;
+            else if(page_ctrl === 1 || page_ctrl === 2)
+            {
+                this.atapi_check_condition_response(ATAPI_SK_ILLEGAL_REQUEST, ATAPI_ASC_INV_FIELD_IN_CMD_PACKET);
+            }
+            else
+            {
+                this.atapi_check_condition_response(ATAPI_SK_ILLEGAL_REQUEST, ATAPI_ASC_SAVING_PARAMETERS_NOT_SUPPORTED);
+            }
             break;
 
         case ATAPI_CMD_MECHANISM_STATUS:
