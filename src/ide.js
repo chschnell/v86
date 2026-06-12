@@ -1392,8 +1392,11 @@ IDEInterface.prototype.atapi_handle = function()
             this.data[2] = this.atapi_sense_key;    // SCSI sense key
             this.data[7] = 8;                       // SCSI additional sense length (fixed 8 for this error code 0x70)
             this.data[12] = this.atapi_add_sense;   // SCSI additional sense code
-            this.atapi_sense_key = 0;
-            this.atapi_add_sense = 0;
+            if(this.atapi_sense_key === ATAPI_SK_UNIT_ATTENTION)
+            {
+                this.atapi_sense_key = ATAPI_SK_NO_SENSE;
+                this.atapi_add_sense = 0;
+            }
             break;
 
         case ATAPI_CMD_INQUIRY:
